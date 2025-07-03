@@ -104,8 +104,8 @@ pipeline {
             steps {
                script{
                    withDockerRegistry(credentialsId: '9ea0c4b0-721f-4219-be62-48a976dbeec0') {
-                    sh "docker tag devopscicd adijaiswal/petclinic:latest"
-                    sh "docker push  adijaiswal/petclinic:latest "
+                    sh "docker tag devopscicd zacst/petclinic:latest"
+                    sh "docker push  zacst/petclinic:latest "
                  }
                }
             }
