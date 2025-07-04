@@ -10,7 +10,7 @@ pipeline {
         SCANNER_HOME=tool 'sonar-scanner'
         DOCKER_IMAGE = "zacst/pet-clinic123:latest"
         CONTAINER_NAME = "petclinic-app"
-        APP_PORT = "8080"
+        APP_PORT = "8083"
     }
     
     stages{
