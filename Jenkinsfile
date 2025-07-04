@@ -8,6 +8,9 @@ pipeline {
     
     environment {
         SCANNER_HOME=tool 'sonar-scanner'
+        DOCKER_IMAGE = "zacst/pet-clinic123:latest"
+        CONTAINER_NAME = "petclinic-app"
+        APP_PORT = "8080"
     }
     
     stages{
@@ -50,7 +53,7 @@ pipeline {
         
          stage("Build"){
             steps{
-                sh " mvn clean install"
+                sh "mvn clean install"
             }
         }
         
@@ -59,24 +62,81 @@ pipeline {
                 script{
                    withDockerRegistry(credentialsId: '58be877c-9294-410e-98ee-6a959d73b352', toolName: 'docker') {
                         
-                        sh "docker build -t image1 ."
-                        sh "docker tag image1 zacst/pet-clinic123:latest "
-                        sh "docker push zacst/pet-clinic123:latest "
+                        sh "docker build -t ${DOCKER_IMAGE} ."
+                        sh "docker push ${DOCKER_IMAGE}"
                     }
                 }
             }
         }
         
-        stage("TRIVY"){
+        stage("TRIVY Security Scan"){
             steps{
-                sh " trivy image zacst/pet-clinic123:latest"
+                sh "trivy image ${DOCKER_IMAGE}"
             }
         }
         
-        stage("Deploy To Tomcat"){
+        stage("Deploy with Docker"){
             steps{
-                sh "cp  /var/lib/jenkins/workspace/CI-CD/target/petclinic.war /opt/apache-tomcat-9.0.65/webapps/ "
+                script{
+                    sh '''
+                        # Stop and remove existing container if it exists
+                        docker stop ${CONTAINER_NAME} || true
+                        docker rm ${CONTAINER_NAME} || true
+                        
+                        # Pull latest image (optional, since we just built it)
+                        docker pull ${DOCKER_IMAGE}
+                        
+                        # Run new container
+                        docker run -d \
+                            --name ${CONTAINER_NAME} \
+                            -p ${APP_PORT}:8080 \
+                            --restart unless-stopped \
+                            ${DOCKER_IMAGE}
+                        
+                        # Verify container is running
+                        docker ps -f name=${CONTAINER_NAME}
+                        
+                        # Wait for application to start
+                        sleep 10
+                        
+                        # Health check
+                        curl -f http://localhost:${APP_PORT}/petclinic || echo "Application may still be starting up"
+                    '''
+                }
             }
+        }
+        
+        stage("Deployment Verification"){
+            steps{
+                script{
+                    sh '''
+                        # Check if container is running
+                        if docker ps -f name=${CONTAINER_NAME} --format "table {{.Names}}" | grep -q ${CONTAINER_NAME}; then
+                            echo "✅ Container ${CONTAINER_NAME} is running successfully"
+                            docker logs --tail 10 ${CONTAINER_NAME}
+                        else
+                            echo "❌ Container ${CONTAINER_NAME} is not running"
+                            exit 1
+                        fi
+                    '''
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            // Clean up unused Docker images to save space
+            sh 'docker image prune -f || true'
+        }
+        success {
+            echo "🎉 Pipeline completed successfully!"
+            echo "Application is running at: http://localhost:${APP_PORT}/petclinic"
+        }
+        failure {
+            echo "❌ Pipeline failed!"
+            // Show container logs for debugging
+            sh 'docker logs ${CONTAINER_NAME} || true'
         }
     }
 }
